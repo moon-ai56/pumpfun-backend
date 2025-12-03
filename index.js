@@ -7,44 +7,36 @@ const PORT = process.env.PORT || 3000;
 
 // Health check
 app.get("/", (_req, res) => {
-  res.send("Solana DexScreener backend running");
+  res.send("DexScreener Solana backend running");
 });
 
-// Solana tokens only
+// Main endpoint: get Solana pairs from DexScreener search
 app.get("/tokens", async (_req, res) => {
   try {
-    res.set("Cache-Control", "no-store");
-
-    // Fetch ALL Solana pairs
-    const resp = await fetch(
-      "https://api.dexscreener.com/latest/dex/pairs/solana"
-    );
+    // Use the official DexScreener search endpoint
+    const url = "https://api.dexscreener.com/latest/dex/search?q=solana";
+    const resp = await fetch(url);
 
     if (!resp.ok) {
+      console.error("DexScreener HTTP error:", resp.status);
       return res
         .status(resp.status)
-        .json({ error: "Failed to fetch Solana pairs from DexScreener" });
+        .json({ error: "Failed to fetch from DexScreener search" });
     }
 
     const data = await resp.json();
     const pairs = data.pairs || [];
 
-    // Filter rule:
-    // - Base token is the token we want (not SOL)
-    // - Quote token is SOL (pairs priced in SOL)
-    const solanaTokens = pairs.filter(
-      (p) =>
-        p.quoteToken?.symbol === "SOL" &&
-        p.baseToken?.symbol !== "SOL"
-    );
+    // ✅ Only keep Solana chain AND skip the base SOL token itself
+    const solPairs = pairs.filter((p) => {
+      const isSolChain = p.chainId === "solana";
+      const sym = p.baseToken?.symbol || "";
+      const isNotMainSOL = sym.toUpperCase() !== "SOL";
+      return isSolChain && isNotMainSOL;
+    });
 
-    // Sort: newest first
-    solanaTokens.sort(
-      (a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0)
-    );
-
-    // Normalize for frontend
-    const tokens = solanaTokens.map((p) => ({
+    // Normalize into a simple token list for your app
+    const tokens = solPairs.map((p) => ({
       id: p.pairAddress,
       name: p.baseToken?.name || "",
       symbol: p.baseToken?.symbol || "",
@@ -52,18 +44,18 @@ app.get("/tokens", async (_req, res) => {
       dexId: p.dexId,
       url: p.url,
       priceUsd: p.priceUsd,
-      liquidityUsd: p.liquidity?.usd || 0,
+      liquidityUsd: p.liquidity?.usd ?? 0,
       fdv: p.fdv ?? null,
       marketCap: p.marketCap ?? null,
       volume24h: p.volume?.h24 ?? null,
       txns24h: p.txns?.h24 ?? null,
-      priceChange: p.priceChange ?? {},
+      priceChange24h: p.priceChange?.h24 ?? null,
       pairCreatedAt: p.pairCreatedAt ?? null,
     }));
 
     return res.json({ tokens });
   } catch (err) {
-    console.error("Backend error:", err);
+    console.error("Error fetching DexScreener data:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -71,4 +63,5 @@ app.get("/tokens", async (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
+
 
