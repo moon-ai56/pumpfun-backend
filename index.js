@@ -7,13 +7,13 @@ const PORT = process.env.PORT || 3000;
 
 // Health check
 app.get("/", (_req, res) => {
-  res.send("DexScreener backend running");
+  res.send("DexScreener Solana backend running");
 });
 
-// Main endpoint: proxy DexScreener
+// Main endpoint: SOLANA-ONLY tokens from DexScreener
 app.get("/tokens", async (_req, res) => {
   try {
-    // Simple example: search pairs related to SOL
+    // Search DexScreener for SOL-related pairs
     const resp = await fetch(
       "https://api.dexscreener.com/latest/dex/search?q=SOL"
     );
@@ -27,12 +27,15 @@ app.get("/tokens", async (_req, res) => {
     const data = await resp.json();
     const pairs = data.pairs || [];
 
+    // 🔥 Keep ONLY Solana pairs
+    const solPairs = pairs.filter((p) => p.chainId === "solana");
+
     // Normalize into a simpler shape for your app
-    const tokens = pairs.map((p) => ({
+    const tokens = solPairs.map((p) => ({
       id: p.pairAddress,
       name: p.baseToken?.name || "",
       symbol: p.baseToken?.symbol || "",
-      chainId: p.chainId,
+      chainId: p.chainId, // always "solana" now
       dexId: p.dexId,
       url: p.url,
       priceUsd: p.priceUsd,
@@ -55,4 +58,5 @@ app.get("/tokens", async (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
+
 
