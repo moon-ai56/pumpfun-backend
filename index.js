@@ -7,13 +7,16 @@ const PORT = process.env.PORT || 3000;
 
 // Health check
 app.get("/", (_req, res) => {
-  res.send("DexScreener Solana backend running");
+  res.send("DexScreener Solana meme backend running");
 });
 
-// Main endpoint: SOLANA-ONLY tokens from DexScreener
+// Solana meme tokens: base token != SOL, quoted in SOL
 app.get("/tokens", async (_req, res) => {
   try {
-    // Search DexScreener for SOL-related pairs
+    // Disable caching for live data
+    res.set("Cache-Control", "no-store");
+
+    // Search for SOL-related pairs on DexScreener
     const resp = await fetch(
       "https://api.dexscreener.com/latest/dex/search?q=SOL"
     );
@@ -27,15 +30,27 @@ app.get("/tokens", async (_req, res) => {
     const data = await resp.json();
     const pairs = data.pairs || [];
 
-    // 🔥 Keep ONLY Solana pairs
-    const solPairs = pairs.filter((p) => p.chainId === "solana");
+    // 🔥 Keep ONLY Solana-chain pairs where:
+    // - chainId is "solana"
+    // - quote token is SOL
+    // - base token is NOT SOL (so it's the memecoin/alt)
+    const solMemePairs = pairs.filter(
+      (p) =>
+        p.chainId === "solana" &&
+        p.quoteToken?.symbol === "SOL" &&
+        p.baseToken?.symbol !== "SOL"
+    );
 
-    // Normalize into a simpler shape for your app
-    const tokens = solPairs.map((p) => ({
+    // Sort newest first by pairCreatedAt
+    solMemePairs.sort(
+      (a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0)
+    );
+
+    const tokens = solMemePairs.map((p) => ({
       id: p.pairAddress,
       name: p.baseToken?.name || "",
       symbol: p.baseToken?.symbol || "",
-      chainId: p.chainId, // always "solana" now
+      chainId: p.chainId,
       dexId: p.dexId,
       url: p.url,
       priceUsd: p.priceUsd,
@@ -44,7 +59,7 @@ app.get("/tokens", async (_req, res) => {
       marketCap: p.marketCap ?? null,
       volume24h: p.volume?.h24 ?? null,
       txns24h: p.txns?.h24 ?? null,
-      priceChange: p.priceChange ?? null,
+      priceChange: p.priceChange ?? {},
       pairCreatedAt: p.pairCreatedAt ?? null,
     }));
 
@@ -58,5 +73,4 @@ app.get("/tokens", async (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
-
 
